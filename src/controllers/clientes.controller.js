@@ -6,7 +6,7 @@ import { pool } from '../config/db.js';
 export const obtenerClientes = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id_cliente, nombre, contacto, correo, telefono, direccion FROM clientes WHERE activo = 1'
+      'SELECT id_cliente, nombre, contacto, correo, telefono, direccion, activo FROM clientes'
     );
     res.json(rows);
   } catch (error) {

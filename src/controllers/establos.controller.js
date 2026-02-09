@@ -11,7 +11,8 @@ export const obtenerEstablos = async (req, res) => {
         e.nombre,
         e.ubicacion,
         e.id_cliente,
-        c.nombre AS cliente
+        e.activo,
+        c.nombre AS cliente_nombre
        FROM establos e
        JOIN clientes c ON e.id_cliente = c.id_cliente
        WHERE e.activo = 1 AND c.activo = 1`

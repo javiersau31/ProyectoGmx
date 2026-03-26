@@ -6,7 +6,8 @@ import {
   obtenerOrdenes,
   obtenerOrdenPorId,
   cambiarEstadoOrden,
-  obtenerCalendario
+  obtenerCalendario,
+  actualizarOrden
 } from '../controllers/ordenes.controller.js';
 
 const router = Router();
@@ -29,5 +30,7 @@ router.patch('/:id/estado', auth, cambiarEstadoOrden);
 
 // Calendario mensual
 router.get('/calendario/mes', auth, obtenerCalendario);
+
+router.put('/:id', auth, actualizarOrden);
 
 export default router;

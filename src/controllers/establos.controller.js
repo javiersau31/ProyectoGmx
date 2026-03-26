@@ -1,24 +1,39 @@
 import { pool } from '../config/db.js';
 
+
+
 //controlador para mejorar establos 
 
 //obtener todos los establos
 export const obtenerEstablos = async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT 
+    const { estado } = req.query;
+
+    let query = `
+      SELECT 
         e.id_establo,
         e.nombre,
         e.ubicacion,
         e.id_cliente,
         e.activo,
         c.nombre AS cliente_nombre
-       FROM establos e
-       JOIN clientes c ON e.id_cliente = c.id_cliente
-       WHERE e.activo = 1 AND c.activo = 1`
-    );
+      FROM establos e
+      JOIN clientes c ON e.id_cliente = c.id_cliente
+      WHERE c.activo = 1
+    `;
+
+    if (estado === 'activos') {
+      query += ' AND e.activo = 1';
+    } else if (estado === 'inactivos') {
+      query += ' AND e.activo = 0';
+    }
+
+    query += ' ORDER BY e.nombre ASC';
+
+    const [rows] = await pool.query(query);
 
     res.json(rows);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al obtener establos' });
@@ -96,20 +111,49 @@ export const eliminarEstablo = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [result] = await pool.query(
-      `UPDATE establos
-       SET activo = 0
+    // 🔎 1️⃣ Verificar que exista y esté activo
+    const [establo] = await pool.query(
+      `SELECT id_establo 
+       FROM establos 
+       WHERE id_establo = ? AND activo = 1`,
+      [id]
+    );
+
+    if (establo.length === 0) {
+      return res.status(404).json({ 
+        message: 'Establo no encontrado o ya inactivo' 
+      });
+    }
+
+    // 🔎 2️⃣ Verificar órdenes activas
+    const [ordenesActivas] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM ordenes_servicio
+       WHERE id_establo = ?
+         AND activo = 1
+         AND estado IN ('programada','en_proceso')`,
+      [id]
+    );
+
+    if (ordenesActivas[0].total > 0) {
+      return res.status(400).json({
+        message: 'No se puede desactivar el establo porque tiene órdenes activas',
+        ordenesActivas: ordenesActivas[0].total
+      });
+    }
+
+    // ✅ 3️⃣ Desactivar
+    await pool.query(
+      `UPDATE establos 
+       SET activo = 0 
        WHERE id_establo = ?`,
       [id]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Establo no encontrado' });
-    }
+    res.json({ message: 'Establo desactivado correctamente' });
 
-    res.json({ message: 'Establo eliminado correctamente' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error al eliminar establo' });
+    res.status(500).json({ message: 'Error al desactivar establo' });
   }
 };

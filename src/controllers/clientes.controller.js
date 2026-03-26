@@ -4,15 +4,39 @@ import { pool } from '../config/db.js';
 
 // obtener todos los clientes
 export const obtenerClientes = async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT id_cliente, nombre, contacto, correo, telefono, direccion, activo FROM clientes'
-    );
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener clientes' });
-  }
-};
+    try {
+      const { estado } = req.query;
+
+      let query = `
+        SELECT 
+          id_cliente, 
+          nombre, 
+          contacto, 
+          correo, 
+          telefono, 
+          direccion, 
+          activo
+        FROM clientes
+        WHERE 1 = 1
+      `;
+
+      if (estado === 'activos') {
+        query += ' AND activo = 1';
+      } else if (estado === 'inactivos') {
+        query += ' AND activo = 0';
+      }
+
+      query += ' ORDER BY nombre ASC';
+
+      const [rows] = await pool.query(query);
+
+      res.json(rows);
+
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error al obtener clientes' });
+    }
+  };
 
 
 // crear un nuevo cliente
@@ -100,23 +124,61 @@ export const actualizarCliente = async (req, res) => {
 
 // eliminar un cliente (marcar como inactivo)
 export const eliminarCliente = async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+      const { id } = req.params;
 
-    const [result] = await pool.query(
-      `UPDATE clientes
-       SET activo = 0
-       WHERE id_cliente = ?`,
-      [id]
-    );
+      // 🔎 1️⃣ Verificar que el cliente exista y esté activo
+      const [cliente] = await pool.query(
+        `SELECT id_cliente FROM clientes WHERE id_cliente = ? AND activo = 1`,
+        [id]
+      );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Cliente no encontrado' });
+      if (cliente.length === 0) {
+        return res.status(404).json({ message: 'Cliente no encontrado o ya inactivo' });
+      }
+
+      // 🔎 2️⃣ Verificar establos activos
+      const [establosActivos] = await pool.query(
+        `SELECT COUNT(*) AS total
+        FROM establos
+        WHERE id_cliente = ? AND activo = 1`,
+        [id]
+      );
+
+      if (establosActivos[0].total > 0) {
+        return res.status(400).json({
+          message: 'No se puede desactivar el cliente porque tiene establos activos',
+          establosActivos: establosActivos[0].total
+        });
+      }
+
+      // 🔎 3️⃣ Verificar órdenes activas (programada o en_proceso)
+      const [ordenesActivas] = await pool.query(
+        `SELECT COUNT(*) AS total
+        FROM ordenes_servicio
+        WHERE id_cliente = ?
+          AND activo = 1
+          AND estado IN ('programada','en_proceso')`,
+        [id]
+      );
+
+      if (ordenesActivas[0].total > 0) {
+        return res.status(400).json({
+          message: 'No se puede desactivar el cliente porque tiene órdenes activas',
+          ordenesActivas: ordenesActivas[0].total
+        });
+      }
+
+      // ✅ 4️⃣ Si todo está bien → desactivar
+      await pool.query(
+        `UPDATE clientes SET activo = 0 WHERE id_cliente = ?`,
+        [id]
+      );
+
+      res.json({ message: 'Cliente desactivado correctamente' });
+
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error al desactivar cliente' });
     }
-
-    res.json({ message: 'Cliente eliminado correctamente' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error al eliminar cliente' });
-  }
-};
+  };
